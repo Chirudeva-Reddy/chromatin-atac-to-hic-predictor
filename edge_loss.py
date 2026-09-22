@@ -32,7 +32,7 @@ class StructuralChromatinLoss(nn.Module):
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         base_mse = self.mse(pred, target)
-        batch_size, bins, _ = pred.shape
+        bins = pred.shape[-1]
         weight_matrix = torch.eye(bins, device=pred.device) * 3.0 + 1.0
         weighted_loss = torch.mean(weight_matrix * (pred - target) ** 2)
         return base_mse + self.diagonal_weight * weighted_loss
@@ -119,12 +119,14 @@ class EdgeAwareChromatinLoss(nn.Module):
 
     def _extract_edges(self, x: torch.Tensor) -> torch.Tensor:
         # Ensure (B, 1, H, W) shape
-        if x.dim() == 3:
+        if x.dim() == 2:
+            x_4d = x.unsqueeze(0).unsqueeze(0)
+        elif x.dim() == 3:
             x_4d = x.unsqueeze(1)
         elif x.dim() == 4 and x.size(1) == 1:
             x_4d = x
         else:
-            raise ValueError(f"Expected tensor of dim 3 (B, H, W) or 4 (B, 1, H, W), got {x.shape}")
+            raise ValueError(f"Expected tensor of dim 2 (H, W), 3 (B, H, W) or 4 (B, 1, H, W), got {x.shape}")
 
         if self.filter_type == "laplacian":
             return F.conv2d(x_4d, self.kernel, padding=1)
@@ -206,6 +208,11 @@ def compute_stratum_correlation(
         y_true = y_true.detach().cpu().numpy()
     if isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.detach().cpu().numpy()
+
+    if y_true.ndim == 4 and y_true.shape[1] == 1:
+        y_true = y_true.squeeze(1)
+    if y_pred.ndim == 4 and y_pred.shape[1] == 1:
+        y_pred = y_pred.squeeze(1)
 
     if y_true.ndim == 3:
         # Batch of matrices: compute mean across batch

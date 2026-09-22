@@ -40,6 +40,15 @@ def test_edge_loss_initialization_and_validation():
 def test_edge_loss_forward_shapes_and_components():
     criterion = EdgeAwareChromatinLoss(edge_weight=0.5)
 
+    # 2D input (H, W)
+    pred_2d = torch.randn(50, 50, requires_grad=True)
+    target_2d = torch.randn(50, 50)
+    loss_2d = criterion(pred_2d, target_2d)
+    assert loss_2d.ndim == 0
+    assert torch.isfinite(loss_2d)
+    loss_2d.backward()
+    assert pred_2d.grad is not None
+
     # 3D input (B, H, W)
     pred_3d = torch.randn(4, 50, 50, requires_grad=True)
     target_3d = torch.randn(4, 50, 50)
@@ -104,10 +113,32 @@ def test_compute_stratum_correlation():
     scc_perfect = compute_stratum_correlation(mat, mat)
     assert abs(scc_perfect - 1.0) < 1e-4
 
+    # 4D input (B, 1, H, W)
+    mat_4d = mat.unsqueeze(1)
+    scc_4d = compute_stratum_correlation(mat_4d, mat_4d)
+    assert abs(scc_4d - 1.0) < 1e-4
+
+    # 2D input (H, W)
+    scc_2d = compute_stratum_correlation(mat[0], mat[0])
+    assert abs(scc_2d - 1.0) < 1e-4
+
     # Correlated matrices
     noise = 0.2 * torch.randn_like(mat)
     scc_noisy = compute_stratum_correlation(mat, mat + noise)
     assert 0.8 < scc_noisy < 1.0
+
+
+def test_structural_loss_shapes():
+    crit = StructuralChromatinLoss()
+    # 2D
+    l_2d = crit(torch.randn(50, 50), torch.randn(50, 50))
+    assert l_2d.ndim == 0 and torch.isfinite(l_2d)
+    # 3D
+    l_3d = crit(torch.randn(4, 50, 50), torch.randn(4, 50, 50))
+    assert l_3d.ndim == 0 and torch.isfinite(l_3d)
+    # 4D
+    l_4d = crit(torch.randn(4, 1, 50, 50), torch.randn(4, 1, 50, 50))
+    assert l_4d.ndim == 0 and torch.isfinite(l_4d)
 
 
 def test_scc_comparison_experiment():
