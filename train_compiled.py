@@ -52,19 +52,9 @@ class DilatedGenomicPredictor(nn.Module):
         out = self.conv2d_stage(f2d).squeeze(1)
         return out
 
-class StructuralChromatinLoss(nn.Module):
-    def __init__(self):
-        super(StructuralChromatinLoss, self).__init__()
-        self.mse = nn.MSELoss()
+from edge_loss import EdgeAwareChromatinLoss, StructuralChromatinLoss
 
-    def forward(self, pred, target):
-        base_mse = self.mse(pred, target)
-        batch_size, bins, _ = pred.shape
-        weight_matrix = torch.eye(bins, device=pred.device) * 3.0 + 1.0
-        weighted_loss = torch.mean(weight_matrix * (pred - target) ** 2)
-        return base_mse + 0.5 * weighted_loss
-
-def run_training():
+def run_training(use_edge_loss: bool = True, edge_weight: float = 0.5):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
@@ -80,7 +70,12 @@ def run_training():
     model = DilatedGenomicPredictor(bins=100).to(device)
     print(f"Dilated Architecture initialized with {sum(p.numel() for p in model.parameters()):,} parameters.")
 
-    criterion = StructuralChromatinLoss()
+    if use_edge_loss:
+        print(f"Using EdgeAwareChromatinLoss with edge_weight={edge_weight} (Laplacian 2D filter)")
+        criterion = EdgeAwareChromatinLoss(edge_weight=edge_weight)
+    else:
+        print("Using standard StructuralChromatinLoss")
+        criterion = StructuralChromatinLoss()
     optimizer = optim.AdamW(model.parameters(), lr=0.003, weight_decay=0.01)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
 
